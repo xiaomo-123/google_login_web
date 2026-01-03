@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from app.api import accounts, auth_urls, tasks, proxies
 from app.config import settings
 from app.database import init_db
+from app.services.heartbeat import heartbeat_service
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -27,8 +28,16 @@ async def lifespan(app: FastAPI):
         print(f"Redis连接失败: {str(e)}")
         print("警告: 账号管理功能将无法使用，请确保Redis服务正在运行")
 
+    # 初始化并启动心跳服务
+    print("正在初始化心跳服务...")
+    heartbeat_service.init_app(app)
+    heartbeat_service.start()
+    print("心跳服务已启动")
+
     yield
     # 关闭时执行
+    print("正在关闭心跳服务...")
+    heartbeat_service.stop()
     print("应用关闭")
 
 def create_app():
@@ -65,6 +74,16 @@ def create_app():
     async def read_root():
         with open("templates/index.html", "r", encoding="utf-8") as f:
             return HTMLResponse(content=f.read())
+
+    # 健康检查端点
+    @app.get("/health")
+    async def health_check():
+        """健康检查端点，用于心跳保活"""
+        return {
+            "status": "ok",
+            "service": settings.APP_NAME,
+            "version": settings.VERSION
+        }
 
     return app
 

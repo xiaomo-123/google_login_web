@@ -229,7 +229,45 @@ function showSection(sectionId) {
 
 // 辅助函数
 const showAddAccountModal = () => AccountManager.showAddModal();
-const showImportAccountModal = () => AccountImport.showImportModal();
+const showImportAccountModal = () => UI.showModal('importAccountModal');
 const showAddAuthUrlModal = () => AuthUrlManager.showAddModal();
 const showAddProxyModal = () => ProxyManager.showAddModal();
 const showAddTaskModal = () => TaskManager.showAddModal();
+
+// 处理账号文件选择
+async function handleAccountFileSelect(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const resultDiv = document.getElementById('importResult');
+    resultDiv.innerHTML = '<div class="alert alert-warning">正在导入...</div>';
+
+    try {
+        const result = await AccountAPI.import(file);
+        resultDiv.innerHTML = `
+            <div class="alert alert-success">
+                <strong>导入成功！</strong><br>
+                成功导入 ${result.imported} 个账号
+                ${result.errors > 0 ? `<br>失败 ${result.errors} 个` : ''}
+            </div>
+        `;
+        AccountManager.load();
+        UI.showAlert(`成功导入 ${result.imported} 个账号`, 'success');
+    } catch (error) {
+        resultDiv.innerHTML = `
+            <div class="alert alert-error">
+                <strong>导入失败！</strong><br>
+                ${error.message || '未知错误'}
+            </div>
+        `;
+        UI.showAlert('导入失败: ' + (error.message || '未知错误'), 'error');
+    }
+}
+
+// 文件选择事件
+document.addEventListener('DOMContentLoaded', () => {
+    const fileInput = document.getElementById('accountFile');
+    if (fileInput) {
+        fileInput.addEventListener('change', handleAccountFileSelect);
+    }
+});

@@ -6,7 +6,8 @@ class Settings:
     APP_NAME: str = "Google登录管理系统"
     VERSION: str = "1.0.0"
     DEBUG: bool = True
-    PORT: int = 8000
+    PORT: int = 6431
+    SERVER_PORT: int = 6431  # 心跳服务使用的端口配置
 
     # 数据库配置
     DATABASE_URL: str = "sqlite:///./google_login.db"

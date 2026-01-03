@@ -41,6 +41,12 @@ async def get_accounts(skip: int = 0, limit: int = 100):
     accounts = account_redis_service.get_all_accounts(skip=skip, limit=limit)
     return accounts
 
+@router.get("/count")
+async def get_account_count():
+    """获取账号总数"""
+    total = account_redis_service.get_total_count()
+    return {"total": total}
+
 @router.get("/{account_id}", response_model=AccountResponse)
 async def get_account(account_id: int):
     """获取单个账号信息"""

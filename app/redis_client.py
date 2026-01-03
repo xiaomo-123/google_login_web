@@ -130,6 +130,10 @@ class AccountRedisService:
 
         return accounts
 
+    def get_total_count(self) -> int:
+        """获取账号总数"""
+        return self.redis.scard(self.account_list_key)
+
     def update_account(self, account_id: int, update_data: Dict) -> Optional[Dict]:
         """更新账号"""
         account_key = self._generate_account_key(account_id)
@@ -211,6 +215,78 @@ class AccountRedisService:
                 return account
 
         return None
+
+    def batch_check_usernames(self, usernames: set) -> set:
+        """批量检查用户名是否已存在"""
+        existing_usernames = set()
+        # 获取所有账号ID
+        account_ids = self.redis.smembers(self.account_list_key)
+
+        # 批量获取所有账号数据
+        accounts = []
+        for account_id in account_ids:
+            account_key = self._generate_account_key(int(account_id))
+            account_data = self.redis.hgetall(account_key)
+            if account_data:
+                accounts.append(account_data)
+
+        # 检查用户名是否在待检查列表中
+        for account in accounts:
+            username = account.get("username")
+            if username in usernames:
+                existing_usernames.add(username)
+
+        return existing_usernames
+
+    def batch_create_accounts(self, accounts: List[tuple]) -> Dict:
+        """批量创建账号"""
+        imported = 0
+        errors = 0
+        error_details = []
+
+        try:
+            # 使用Redis管道进行批量操作
+            pipe = self.redis.pipeline()
+
+            for username, password in accounts:
+                try:
+                    account_id = self._get_next_id()
+                    account_data = {
+                        "id": str(account_id),
+                        "username": username,
+                        "password": password,
+                        "status": "1",
+                        "created_at": datetime.now().isoformat(),
+                        "updated_at": datetime.now().isoformat()
+                    }
+
+                    account_key = self._generate_account_key(account_id)
+
+                    # 使用管道批量设置字段
+                    for field, value in account_data.items():
+                        pipe.hset(account_key, field, value)
+
+                    # 将账号ID添加到列表
+                    pipe.sadd(self.account_list_key, str(account_id))
+
+                    imported += 1
+                except Exception as e:
+                    errors += 1
+                    error_details.append(f"创建账号 {username} 失败: {str(e)}")
+
+            # 执行所有管道命令
+            pipe.execute()
+
+        except Exception as e:
+            errors += imported
+            imported = 0
+            error_details.append(f"批量创建账号失败: {str(e)}")
+
+        return {
+            "imported": imported,
+            "errors": errors,
+            "error_details": error_details
+        }
 
 # 创建全局实例
 account_redis_service = AccountRedisService()
