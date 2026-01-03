@@ -255,6 +255,8 @@ async function handleAccountFileSelect(event) {
                 ${result.errors > 0 ? `<br>失败 ${result.errors} 个` : ''}
             </div>
         `;
+        // 清空文件输入框，确保可以再次导入
+        event.target.value = '';
         AccountManager.load();
         UI.showAlert(`成功导入 ${result.imported} 个账号`, 'success');
     } catch (error) {
@@ -264,6 +266,8 @@ async function handleAccountFileSelect(event) {
                 ${error.message || '未知错误'}
             </div>
         `;
+        // 清空文件输入框，确保可以再次导入
+        event.target.value = '';
         UI.showAlert('导入失败: ' + (error.message || '未知错误'), 'error');
     }
 }

@@ -139,7 +139,7 @@ async def import_accounts(file: UploadFile = File(...)):
     2. 移除"账号："字符，竖线|分割账号和密码
     3. 移除"账号：账号："字符，密码分割账号和密码
     """
-        # 检查文件大小（10MB限制）
+    # 检查文件大小（10MB限制）
     MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
     content = await file.read()
     if len(content) > MAX_FILE_SIZE:
@@ -320,29 +320,7 @@ async def import_accounts(file: UploadFile = File(...)):
             error_count += 1
             errors.append(f"账号已存在: {username}")
 
-    # # 第四步：生成本地文本文件，记录成功导入的账号
-    # if imported_count > 0:
-    #     import os
-    #     from datetime import datetime
-
-    #     # 生成带时间戳的文件名
-    #     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    #     filename = f"accounts_import_{timestamp}.txt"
-
-    #     # 确保导入目录存在
-    #     import_dir = os.path.join(os.path.dirname(__file__), "..", "..", "imports")
-    #     os.makedirs(import_dir, exist_ok=True)
-
-    #     # 构建文件内容，格式为：账号|密码
-    #     lines = []
-    #     for username, password in accounts_to_import:
-    #         if username not in existing_usernames:  # 只记录成功导入的账号
-    #             lines.append(f"{username}|{password}")
-
-    #     # 写入本地文件
-    #     file_path = os.path.join(import_dir, filename)
-    #     with open(file_path, 'w', encoding='utf-8') as f:
-    #         f.write('\n'.join(lines))
+    
 
     return {
         "imported": imported_count,
