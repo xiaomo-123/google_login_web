@@ -1,5 +1,6 @@
 from playwright.async_api import async_playwright, Dialog
 import asyncio
+import aiohttp
 from datetime import datetime
 from app.database import SessionLocal
 from app.models.task import Task
@@ -8,10 +9,47 @@ from app.models.proxy import Proxy
 from app.redis_client import account_redis_service
 
 async def handle_dialog(dialog: Dialog):
-    """监听并处理浏览器弹出的对话框"""
+    """监听并处理浏览器弹出的对话框（比如"要打开Python吗？"）"""
     print(f"检测到弹窗：{dialog.message}")
+    # 点击"打开Python"按钮（对应dialog.accept()）
+    # 若要点击"取消"，则替换为 dialog.dismiss()
     await dialog.accept()
-    print("已接受弹窗")
+    print("已点击「打开Python」")
+
+async def get_auth_url(auth_url: str, description: str):
+    """
+    请求授权地址
+
+    参数:
+        auth_url: 授权地址
+        description: 描述参数
+
+    返回:
+        auth_url: 授权URL
+    """
+    try:
+        async with aiohttp.ClientSession() as session:
+            # 发送POST请求
+            async with session.post(
+                auth_url,
+                json={"idp": description},
+                timeout=aiohttp.ClientTimeout(total=30)
+            ) as response:
+                # 检查响应状态
+                response.raise_for_status()
+
+                # 解析响应
+                result = await response.json()
+
+                # 返回auth_url
+                return result.get("auth_url")
+
+    except aiohttp.ClientError as e:
+        print(f"请求授权地址失败: {str(e)}")
+        raise Exception(f"请求授权地址失败: {str(e)}")
+    except Exception as e:
+        print(f"解析授权地址响应失败: {str(e)}")
+        raise Exception(f"解析授权地址响应失败: {str(e)}")
 
 async def google_login_single(username: str, password: str, auth_url: str, headless: bool = False):
     """
@@ -65,9 +103,13 @@ async def google_login_single(username: str, password: str, auth_url: str, headl
         print(f"[{username}] 等待登录完成...")
         await asyncio.sleep(5)
 
+        # 10. 登录成功后等待10秒
+        print(f"[{username}] 登录成功，等待10秒...")
+        await asyncio.sleep(10)
+
         print(f"[{username}] 登录流程已完成！")
 
-        # 10. 关闭浏览器
+        # 11. 关闭浏览器
         await browser.close()
 
         return True
@@ -120,29 +162,36 @@ async def run_google_login_task(task_id: int):
 
 
         # 获取授权地址
-        auth_url = db.query(AuthUrl).filter(AuthUrl.id == task.auth_url_id).first()
-        if not auth_url:
+        auth_url_obj = db.query(AuthUrl).filter(AuthUrl.id == task.auth_url_id).first()
+        if not auth_url_obj:
             raise Exception(f"授权地址ID {task.auth_url_id} 不存在")
 
         print(f"\n授权地址:")
-        print(f"  ID: {auth_url.id}")
-        print(f"  名称: {auth_url.name}")
-        print(f"  URL: {auth_url.url}")
-        print(f"  状态: {'正常' if auth_url.status == 1 else '禁用'}")
+        print(f"  ID: {auth_url_obj.id}")
+        print(f"  名称: {auth_url_obj.name}")
+        print(f"  URL: {auth_url_obj.url}")
+        print(f"  描述: {auth_url_obj.description}")
+        print(f"  状态: {'正常' if auth_url_obj.status == 1 else '禁用'}")
         account = accounts[0]
+
         # 执行登录
         try:
             if task.account_type == 1:
-                # 更新任务状态为进行中
-                google_login_url = "https://accounts.google.com/signin"
-                print(f"  ID: {google_login_url}")
+                # 请求授权地址
+                print(f"\n正在请求授权地址...")
+                google_login_url = await get_auth_url(
+                    auth_url=auth_url_obj.url,
+                    description=auth_url_obj.description
+                )
+                print(f"获取到的授权地址: {google_login_url}")
+
             # 调用登录函数
-                result = await google_login_single(
-                username=account["username"],
-                password=account["password"],
-                auth_url=google_login_url,
-                headless=False  # 可以从配置中读取
-            )
+            #     result = await google_login_single(
+            #     username=account["username"],
+            #     password=account["password"],
+            #     auth_url=google_login_url,
+            #     headless=False  # 可以从配置中读取
+            # )
 
                 # 更新任务状态为完成
                 task.status = "completed"

@@ -7,7 +7,7 @@ from app.models.task import Task
 from app.models.auth_url import AuthUrl
 from app.models.proxy import Proxy
 from pydantic import BaseModel, field_serializer
-
+import asyncio
 router = APIRouter(prefix="/api/tasks", tags=["任务管理"])
 
 # Pydantic模型
@@ -169,9 +169,7 @@ async def start_task(task_id: int, db: Session = Depends(get_db)):
 
     # 在后台线程中运行任务
     from app.workers.google_login_worker import run_google_login_task
-    import threading
-    thread = threading.Thread(target=run_google_login_task, args=(task_id,), daemon=True)
-    thread.start()
+    run_google_login_task(task_id)
 
     db.refresh(db_task)
     return db_task
