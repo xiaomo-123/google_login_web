@@ -28,6 +28,7 @@
                 <div class="form-group">
                     <button class="btn btn-primary" onclick="showAddAccountModal()">添加账号</button>
                     <button class="btn btn-success" onclick="showImportAccountModal()">导入账号</button>
+                    <button class="btn btn-info" onclick="AccountManager.export()">导出账号</button>
                     <button class="btn btn-danger" onclick="AccountManager.batchDelete()">批量删除</button>
                     <button class="btn btn-danger" onclick="AccountManager.deleteAll()">删除全部</button>
                 </div>
@@ -288,8 +289,8 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js"></script>
-    <script src="/static/js/account-manager.js"></script>
+    <script src="/static/js/app.js?v=2.0"></script>
+    <script src="/static/js/account-manager.js?v=2.0"></script>
     <script src="/static/js/auth-url-manager.js"></script>
     <script src="/static/js/proxy-manager.js"></script>
     <script src="/static/js/task-manager.js"></script>

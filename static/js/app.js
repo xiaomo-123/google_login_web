@@ -60,6 +60,10 @@ const AccountAPI = {
         formData.append('file', file);
         return fetch(`${API_BASE_URL}/accounts/import`, { method: 'POST', body: formData })
             .then(r => r.json());
+    },
+
+    export() {
+        window.location.href = `${API_BASE_URL}/accounts/export`;
     }
 };
 

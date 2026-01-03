@@ -47,16 +47,6 @@ async def get_account_count():
     total = account_redis_service.get_total_count()
     return {"total": total}
 
-@router.get("/{account_id}", response_model=AccountResponse)
-async def get_account(account_id: int):
-    """获取单个账号信息"""
-    account = account_redis_service.get_account(account_id)
-    if not account:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"账号ID {account_id} 不存在"
-        )
-    return account
 
 @router.post("/", response_model=AccountResponse, status_code=status.HTTP_201_CREATED)
 async def create_account(account: AccountCreate):
@@ -149,7 +139,7 @@ async def import_accounts(file: UploadFile = File(...)):
     2. 移除"账号："字符，竖线|分割账号和密码
     3. 移除"账号：账号："字符，密码分割账号和密码
     """
-    # 检查文件大小（10MB限制）
+        # 检查文件大小（10MB限制）
     MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
     content = await file.read()
     if len(content) > MAX_FILE_SIZE:
@@ -185,36 +175,131 @@ async def import_accounts(file: UploadFile = File(...)):
         username = None
         password = None
 
-        # 尝试格式1：空格分割
-        if ' ' in line and '|' not in line and '密码' not in line:
-            parts = line.split(' ')
-            if len(parts) >= 2:
-                username = parts[0].strip()
-                password = parts[1].strip()
+        
+        # 尝试5种分隔符格式：空格、密码、竖线、密码：、;|
+        # 格式1：空格作为分隔符
+        
+        # 格式2："密码"作为分隔符
+        if '密码' in line and '密码：' not in line:
+            if line.count('密码') > 1:
+                continue
+            parts = line.split('密码', 1)
+            if len(parts) ==2:
+                before = parts[0].strip()
+                after = parts[1].strip()
+                # 优先使用全角冒号，其次使用半角冒号
+                if '：' in before:
+                    username = before[before.rfind('：') + 1:].strip()
+                elif ':' in before:
+                    username = before[before.rfind(':') + 1:].strip()
+                else:
+                    username = before
+                username = username.rstrip(';')       
+                password = after
 
-        # 尝试格式2：移除"账号："字符，竖线|分割
+        # 格式3：竖线|作为分隔符
         elif '|' in line:
-            line = line.replace('账号：', '').replace('账号:', '')
-            parts = line.split('|')
-            if len(parts) >= 2:
-                username = parts[0].strip()
-                password = parts[1].strip()
+            if line.count('|') > 1:
+                continue
+            parts = line.split('|', 1)
+            if len(parts) ==2:
+                before = parts[0].strip()
+                after = parts[1].strip()
+                # 优先使用全角冒号，其次使用半角冒号
+                if '：' in before:
+                    username = before[before.rfind('：') + 1:].strip()
+                elif ':' in before:
+                    username = before[before.rfind(':') + 1:].strip()
+                else:
+                    username = before
+                username = username.rstrip(';')       
+                password = after
+             
 
-        # 尝试格式3：移除"账号：账号："字符，密码分割
-        elif '密码' in line:
-            line = line.replace('账号：账号：', '').replace('账号:账号:', '')
-            parts = line.split('密码')
-            if len(parts) >= 2:
-                username = parts[0].strip()
-                password = parts[1].replace('：', '').replace(':', '').strip()
-
+        # 格式4："密码："作为分隔符
+        elif '密码：' in line:
+            if line.count('密码：') > 1:
+                continue
+            parts = line.split('密码：', 1)
+            if len(parts) ==2:
+                before = parts[0].strip()
+                after = parts[1].strip()
+                # 优先使用全角冒号，其次使用半角冒号
+                if '：' in before:
+                    username = before[before.rfind('：') + 1:].strip()
+                elif ':' in before:
+                    username = before[before.rfind(':') + 1:].strip()
+                else:
+                    username = before
+                username = username.rstrip(';')       
+                password = after
+        elif ';密码：' in line:
+            if line.count(';密码：') > 1:
+                continue
+            parts = line.split(';密码：', 1)
+            if len(parts) ==2:
+                before = parts[0].strip()
+                after = parts[1].strip()
+                # 优先使用全角冒号，其次使用半角冒号
+                if '：' in before:
+                    username = before[before.rfind('：') + 1:].strip()
+                elif ':' in before:
+                    username = before[before.rfind(':') + 1:].strip()
+                else:
+                    username = before
+                username = username.rstrip(';')       
+                password = after
+        # 格式5：";|"作为分隔符
+        elif ';|' in line:
+            if line.count(';|') > 1:
+                continue
+            parts = line.split(';|', 1)
+            if len(parts) ==2:
+                before = parts[0].strip()
+                after = parts[1].strip()
+                # 优先使用全角冒号，其次使用半角冒号
+                if '：' in before:
+                    username = before[before.rfind('：') + 1:].strip()
+                elif ':' in before:
+                    username = before[before.rfind(':') + 1:].strip()
+                else:
+                    username = before
+                username = username.rstrip(';')    
+                password = after
+        elif ' ' in line:           
+            parts = line.split(' ', 1)            
+            if len(parts) ==2:
+                before = parts[0].strip()
+                after = parts[1].strip()
+                # 优先使用全角冒号，其次使用半角冒号
+                if '：' in before:
+                    username = before[before.rfind('：') + 1:].strip()
+                elif ':' in before:
+                    username = before[before.rfind(':') + 1:].strip()
+                else:
+                    username = before
+                username = username.rstrip(';')       
+                password = after
+                #分隔符
+        elif line.strip():                      
+            parts = line.split(maxsplit=1)
+            if len(parts) ==2:
+                before = parts[0].strip()
+                after = parts[1].strip()
+                # 优先使用全角冒号，其次使用半角冒号
+                if '：' in before:
+                    username = before[before.rfind('：') + 1:].strip()
+                elif ':' in before:
+                    username = before[before.rfind(':') + 1:].strip()
+                else:
+                    username = before
+                username = username.rstrip(';')       
+                password = after
         # 收集待导入的账号
         if username and password:
             accounts_to_import.append((username, password))
             usernames_to_check.add(username)
-        else:
-            error_count += 1
-            errors.append(f"无法解析行: {line}")
+        # 如果4种格式都不匹配，跳过该行，不入库
 
     # 第二步：批量检查已存在的账号
     existing_usernames = set()
@@ -235,6 +320,30 @@ async def import_accounts(file: UploadFile = File(...)):
             error_count += 1
             errors.append(f"账号已存在: {username}")
 
+    # # 第四步：生成本地文本文件，记录成功导入的账号
+    # if imported_count > 0:
+    #     import os
+    #     from datetime import datetime
+
+    #     # 生成带时间戳的文件名
+    #     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    #     filename = f"accounts_import_{timestamp}.txt"
+
+    #     # 确保导入目录存在
+    #     import_dir = os.path.join(os.path.dirname(__file__), "..", "..", "imports")
+    #     os.makedirs(import_dir, exist_ok=True)
+
+    #     # 构建文件内容，格式为：账号|密码
+    #     lines = []
+    #     for username, password in accounts_to_import:
+    #         if username not in existing_usernames:  # 只记录成功导入的账号
+    #             lines.append(f"{username}|{password}")
+
+    #     # 写入本地文件
+    #     file_path = os.path.join(import_dir, filename)
+    #     with open(file_path, 'w', encoding='utf-8') as f:
+    #         f.write('\n'.join(lines))
+
     return {
         "imported": imported_count,
         "errors": error_count,
@@ -249,4 +358,40 @@ async def delete_account(account_id: int):
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"账号ID {account_id} 不存在"
         )
+
+@router.get("/export")
+async def export_accounts():
+    """导出所有账号为文本文件，格式为：账号|密码"""
+    from fastapi.responses import Response
+    from datetime import datetime
+    
+    # 获取所有账号
+    accounts = account_redis_service.get_all_accounts(get_all=True)
+    
+    # 构建文本内容
+    lines = [f"{account['username']}|{account['password']}" for account in accounts]
+    content = "\n".join(lines)
+    
+    # 生成带时间戳的文件名
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"accounts_export_{timestamp}.txt"
+    
+    # 返回文件下载
+    return Response(
+        content=content,
+        media_type="text/plain",
+        headers={
+            "Content-Disposition": f"attachment; filename={filename}"
+        }
+    )
     return None
+@router.get("/{account_id}", response_model=AccountResponse)
+async def get_account(account_id: int):
+    """获取单个账号信息"""
+    account = account_redis_service.get_account(account_id)
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"账号ID {account_id} 不存在"
+        )
+    return account

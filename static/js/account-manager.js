@@ -113,6 +113,15 @@ const AccountManager = {
         }
     },
 
+    export() {
+        try {
+            AccountAPI.export();
+            UI.showAlert('导出成功，文件正在下载', 'success');
+        } catch (error) {
+            UI.showAlert('导出失败: ' + error.message, 'error');
+        }
+    },
+
     showAddModal() {
         const form = document.getElementById('addAccountForm');
         form.reset();
