@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime
@@ -152,7 +152,7 @@ async def delete_task(task_id: int, db: Session = Depends(get_db)):
     return None
 
 @router.post("/{task_id}/start", response_model=TaskResponse)
-async def start_task(task_id: int, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+async def start_task(task_id: int, db: Session = Depends(get_db)):
     """启动任务"""
     db_task = db.query(Task).filter(Task.id == task_id).first()
     if not db_task:
@@ -167,14 +167,11 @@ async def start_task(task_id: int, background_tasks: BackgroundTasks, db: Sessio
             detail="任务已在运行中"
         )
 
-    # 更新任务状态为运行中
-    db_task.status = "running"
-    db_task.started_at = datetime.now()
-    db.commit()
-
-    # 添加后台任务
-    from app.services.google_login_service import run_google_login_task
-    background_tasks.add_task(run_google_login_task, task_id)
+    # 在后台线程中运行任务
+    from app.workers.google_login_worker import run_google_login_task
+    import threading
+    thread = threading.Thread(target=run_google_login_task, args=(task_id,), daemon=True)
+    thread.start()
 
     db.refresh(db_task)
     return db_task

@@ -104,31 +104,81 @@ class AccountRedisService:
         if not account_data:
             return None
 
-        # 转换数据类型，只返回AccountResponse需要的字段
+        # 转换数据类型，返回完整账号信息
         return {
             "id": int(account_data.get("id", account_id)),
             "username": account_data.get("username", ""),
+            "password": account_data.get("password", ""),
             "status": int(account_data.get("status", 1)),
             "created_at": account_data.get("created_at")
         }
 
-    def get_all_accounts(self, skip: int = 0, limit: int = 100) -> List[Dict]:
-        """获取所有账号"""
+    def get_all_accounts(self, skip: int = 0, limit: int = 100, get_all: bool = False, batch_size: int = 100) -> List[Dict]:
+        """获取所有账号
+
+        参数:
+            skip: 跳过的记录数
+            limit: 返回的记录数（默认100）
+            get_all: 是否获取所有账号（忽略limit限制）
+            batch_size: 分批获取时的每批大小（默认100）
+        """
         # 获取所有账号ID
         account_ids = self.redis.smembers(self.account_list_key)
         account_ids = sorted([int(aid) for aid in account_ids])
 
         # 分页处理
-        account_ids = account_ids[skip:skip + limit]
+        if get_all:
+            # 获取所有账号，分批处理
+            accounts = []
+            total = len(account_ids)
+            processed = 0
 
-        # 获取账号详情
-        accounts = []
-        for account_id in account_ids:
-            account = self.get_account(account_id)
-            if account:
-                accounts.append(account)
+            while processed < total:
+                # 获取当前批次的账号ID
+                batch_ids = account_ids[processed:processed + batch_size]
 
-        return accounts
+                # 使用管道批量获取账号数据
+                pipe = self.redis.pipeline()
+                for account_id in batch_ids:
+                    account_key = self._generate_account_key(account_id)
+                    pipe.hgetall(account_key)
+                batch_data = pipe.execute()
+
+                # 处理批次数据
+                for account_id, account_data in zip(batch_ids, batch_data):
+                    if account_data:
+                        accounts.append({
+                            "id": int(account_data.get("id", account_id)),
+                            "username": account_data.get("username", ""),
+                            "password": account_data.get("password", ""),
+                            "status": int(account_data.get("status", 1)),
+                            "created_at": account_data.get("created_at")
+                        })
+
+                processed += len(batch_ids)
+                print(f"已处理 {processed}/{total} 个账号")
+
+            return accounts
+        else:
+            # 普通分页
+            account_ids = account_ids[skip:skip + limit]
+
+            # 获取账号详情
+            accounts = []
+            for account_id in account_ids:
+                account_key = self._generate_account_key(account_id)
+                account_data = self.redis.hgetall(account_key)
+
+                if account_data:
+                    accounts.append({
+                        "id": int(account_data.get("id", account_id)),
+                        "username": account_data.get("username", ""),
+                        "password": account_data.get("password", ""),
+                        "status": int(account_data.get("status", 1)),
+                        "created_at": account_data.get("created_at")
+                    })
+
+            return accounts
 
     def get_total_count(self) -> int:
         """获取账号总数"""
