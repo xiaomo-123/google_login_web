@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google登录管理系统</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar">
+        <div class="container">
+            <h1>Google登录管理系统</h1>
+            <div class="nav-links">
+                <a href="#" data-section="accounts">账号管理</a>
+                <a href="#" data-section="auth-urls">授权地址</a>
+                <a href="#" data-section="proxies">代理管理</a>
+                <a href="#" data-section="tasks">任务管理</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <!-- 账号管理区域 -->
+        <div id="accounts" class="section">
+            <div class="card">
+                <h2>账号管理</h2>
+                <div class="form-group">
+                    <button class="btn btn-primary" onclick="showAddAccountModal()">添加账号</button>
+                    <button class="btn btn-success" onclick="showImportAccountModal()">导入账号</button>
+                    <button class="btn btn-danger" onclick="AccountManager.batchDelete()">批量删除</button>
+                    <button class="btn btn-danger" onclick="AccountManager.deleteAll()">删除全部</button>
+                </div>
+                <table id="accountsTable">
+                    <thead>
+                        <tr>
+                            <th><input type="checkbox" id="selectAllAccounts" onchange="AccountManager.toggleSelectAll()"></th>
+                            <th>ID</th>
+                            <th>用户名</th>
+                            <th>密码</th>
+                            <th>状态</th>
+                            <th>创建时间</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 授权地址管理区域 -->
+        <div id="auth-urls" class="section" style="display: none;">
+            <div class="card">
+                <h2>授权地址管理</h2>
+                <div class="form-group">
+                    <button class="btn btn-primary" onclick="showAddAuthUrlModal()">添加授权地址</button>
+                </div>
+                <table id="authUrlsTable">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>名称</th>
+                            <th>URL</th>
+                            <th>描述</th>
+                            <th>状态</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 代理管理区域 -->
+        <div id="proxies" class="section" style="display: none;">
+            <div class="card">
+                <h2>代理管理</h2>
+                <div class="form-group">
+                    <button class="btn btn-primary" onclick="showAddProxyModal()">添加代理</button>
+                </div>
+                <table id="proxiesTable">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>URL</th>
+                            <th>类型</th>
+                            <th>端口</th>
+                            <th>用户名</th>
+                            <th>状态</th>
+                            <th>创建时间</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 任务管理区域 -->
+        <div id="tasks" class="section" style="display: none;">
+            <div class="card">
+                <h2>任务管理</h2>
+                <div class="form-group">
+                    <button class="btn btn-primary" onclick="showAddTaskModal()">创建任务</button>
+                </div>
+                <table id="tasksTable">
+                    <thead>
+                        <tr>
+                            <th><input type="checkbox" id="selectAllTasks" onchange="TaskManager.toggleSelectAll()"></th>
+                            <th>ID</th>
+                            <th>任务名称</th>
+                            <th>账号类型</th>
+                            <th>授权地址</th>
+                            <th>代理</th>
+                            <th>状态</th>
+                            <th>创建时间</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- 添加账号模态框 -->
+    <div id="addAccountModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="accountModalTitle">添加账号</h3>
+                <button class="close-btn" onclick="UI.hideModal('addAccountModal')">&times;</button>
+            </div>
+            <form id="addAccountForm">
+                <input type="hidden" id="accountId" name="id">
+                <div class="form-group">
+                    <label>用户名/邮箱</label>
+                    <input type="text" name="username" required>
+                </div>
+                <div class="form-group">
+                    <label>密码</label>
+                    <input type="password" name="password" required>
+                </div>
+                <div class="form-group">
+                    <label>状态</label>
+                    <select name="status">
+                        <option value="1">正常</option>
+                        <option value="0">禁用</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-primary">保存</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- 导入账号模态框 -->
+    <div id="importAccountModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>导入账号</h3>
+                <button class="close-btn" onclick="UI.hideModal('importAccountModal')">&times;</button>
+            </div>
+            <div class="file-upload" onclick="document.getElementById('accountFile').click()">
+                <input type="file" id="accountFile" accept=".txt" onchange="handleAccountFileSelect(event)">
+                <p>点击选择文件或拖拽文件到此处</p>
+                <p class="text-small">支持格式：空格分隔、|分隔、密码分隔</p>
+            </div>
+            <div id="importResult" style="margin-top: 20px;"></div>
+        </div>
+    </div>
+
+    <!-- 添加授权地址模态框 -->
+    <div id="addAuthUrlModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="authUrlModalTitle">添加授权地址</h3>
+                <button class="close-btn" onclick="UI.hideModal('addAuthUrlModal')">&times;</button>
+            </div>
+            <form id="addAuthUrlForm">
+                <input type="hidden" id="authUrlId" name="id">
+                <div class="form-group">
+                    <label>名称</label>
+                    <input type="text" name="name" required>
+                </div>
+                <div class="form-group">
+                    <label>URL</label>
+                    <input type="url" name="url" required>
+                </div>
+                <div class="form-group">
+                    <label>描述</label>
+                    <textarea name="description" rows="3"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>状态</label>
+                    <select name="status">
+                        <option value="1">正常</option>
+                        <option value="0">禁用</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-primary">保存</button>
+            </form>
+        </div>
+    </div>
+
+   <!-- 添加任务模态框 -->
+<div id="addTaskModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="taskModalTitle">创建任务</h3>
+            <button class="close-btn" onclick="UI.hideModal('addTaskModal')">&times;</button>
+        </div>
+        <form id="addTaskForm">
+            <input type="hidden" id="taskId" name="id">
+            <div class="form-group">
+                <label>任务名称</label>
+                <input type="text" name="name" required>
+            </div>
+            <div class="form-group">
+                <label>账号类型</label>
+                <select name="account_type" required>
+                    <option value="1">类型1</option>
+                    <option value="2">类型2</option>
+                    <option value="3">类型3</option>
+                    <option value="4">类型4</option>
+                    <option value="5">类型5</option>
+                    <option value="6">类型6</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>授权地址</label>
+                <select name="auth_url_id" id="authUrlSelect" required></select>
+            </div>
+            <div class="form-group">
+                <label>代理</label>
+                <select name="proxy_id" id="proxySelect">
+                    <option value="">不使用代理</option>
+                </select>
+            </div>
+            <button type="submit" class="btn btn-primary">保存</button>
+        </form>
+    </div>
+</div>
+
+
+    <!-- 添加代理模态框 -->
+    <div id="addProxyModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="proxyModalTitle">添加代理</h3>
+                <button class="close-btn" onclick="UI.hideModal('addProxyModal')">&times;</button>
+            </div>
+            <form id="addProxyForm">
+                <input type="hidden" id="proxyId" name="id">
+                <div class="form-group">
+                    <label>代理URL</label>
+                    <input type="text" name="url" required>
+                </div>
+                <div class="form-group">
+                    <label>代理类型</label>
+                    <select name="proxy_type" required>
+                        <option value="http">HTTP</option>
+                        <option value="https">HTTPS</option>
+                        <option value="socks5">SOCKS5</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>端口</label>
+                    <input type="number" name="port" required>
+                </div>
+                <div class="form-group">
+                    <label>用户名</label>
+                    <input type="text" name="username">
+                </div>
+                <div class="form-group">
+                    <label>密码</label>
+                    <input type="password" name="password">
+                </div>
+                <div class="form-group">
+                    <label>状态</label>
+                    <select name="status">
+                        <option value="1">正常</option>
+                        <option value="0">禁用</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-primary">保存</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+    <script src="/static/js/account-import.js"></script>
+    <script src="/static/js/account-manager.js"></script>
+    <script src="/static/js/auth-url-manager.js"></script>
+    <script src="/static/js/proxy-manager.js"></script>
+    <script src="/static/js/task-manager.js"></script>
+
+    <script>
+        // 加载任务列表
+        
+        // 处理账号文件选择
+        async function handleAccountFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            try {
+                const result = await AccountAPI.import(file);
+                const resultDiv = document.getElementById('importResult');
+                resultDiv.innerHTML = `
+                    <div class="alert alert-success">
+                        成功导入 ${result.imported} 个账号
+                        ${result.errors > 0 ? `，失败 ${result.errors} 个` : ''}
+                    </div>
+                `;
+                AccountManager.load();
+            } catch (error) {
+                UI.showAlert('导入失败: ' + error.message, 'error');
+            }
+        }
+
+        
+    </script>
+</body>
+</html>
