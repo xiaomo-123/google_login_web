@@ -5,7 +5,8 @@ from datetime import datetime
 from app.database import SessionLocal
 from app.models.task import Task
 from app.models.auth_url import AuthUrl
-from app.services.google_login_service import google_login_single, get_auth_url
+from app.services.google_login_single_selenium import google_login_single
+from app.services.google_login_service import get_auth_url
 from app.redis_client import account_redis_service
 from app.websocket_server import log_publisher
 
@@ -74,7 +75,7 @@ async def _run_google_login_task(task_id: int):
         log_publisher.publish_log(task_id, "info", f"任务状态已更新为运行中")
 
         # 并发执行多个登录任务，初始同时打开两个脚本任务
-        max_concurrent = 3  # 最大并发数
+        max_concurrent =1  # 最大并发数
         running_tasks = []  # 当前运行的任务列表
         processed_count = 0
         
