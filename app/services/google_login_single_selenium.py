@@ -9,6 +9,7 @@ import os
 import subprocess
 import psutil
 import threading
+import hashlib
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
@@ -143,11 +144,14 @@ async def google_login_single(username: str, password: str, auth_url: str, headl
         log_publisher.publish_log(task_id, "info", message)
 
     # 计算窗口位置，使多个窗口横向有一定距离
-    window_x = 100 + (task_id % 5) * 400  # 根据task_id计算横向位置，最多5个窗口
-    window_y = 50 + (task_id // 5) * 100  # 根据task_id计算纵向位置
+    # 使用账号信息生成唯一标识符，确保每个浏览器窗口有独立的位置和调试端口
+    username_hash = int(hashlib.md5(username.encode()).hexdigest(), 16)
 
-    # 使用唯一的调试端口
-    debug_port = 9500 + (task_id % 100)
+    window_x = 100 + (username_hash % 5) * 400  # 根据用户名哈希计算横向位置，最多5个窗口
+    window_y = 50 + (username_hash // 5) * 100  # 根据用户名哈希计算纵向位置
+
+    # 使用唯一的调试端口，基于用户名哈希值
+    debug_port = 9500 + (username_hash % 100)
     user_data_dir = f"C:\\chrome_google_profile_{debug_port}"
 
     # 先尝试清理可能残留的 Chrome 进程
@@ -194,7 +198,45 @@ async def google_login_single(username: str, password: str, auth_url: str, headl
     ]
 
     chrome_process = subprocess.Popen(cmd)
-    time.sleep(3)
+    message = f"Chrome进程已启动 (PID: {chrome_process.pid})，等待初始化..."
+    print(message)
+    if task_id:
+        log_publisher.publish_log(task_id, "info", message)
+
+    # 等待Chrome进程启动并检查调试端口是否可用
+    max_wait = 10  # 最大等待10秒
+    wait_interval = 0.5  # 每0.5秒检查一次
+    for i in range(int(max_wait / wait_interval)):
+        time.sleep(wait_interval)
+        # 检查进程是否还在运行
+        if chrome_process.poll() is not None:
+            exit_code = chrome_process.returncode
+            message = f"Chrome进程意外退出 (PID: {chrome_process.pid}, 退出码: {exit_code})"
+            print(message)
+            if task_id:
+                log_publisher.publish_log(task_id, "error", message)
+            raise Exception(f"Chrome进程意外退出 (退出码: {exit_code})")
+
+        # 尝试连接调试端口
+        try:
+            import socket
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            result = sock.connect_ex(('127.0.0.1', debug_port))
+            sock.close()
+            if result == 0:
+                message = f"Chrome调试端口 {debug_port} 已就绪"
+                print(message)
+                if task_id:
+                    log_publisher.publish_log(task_id, "info", message)
+                break
+        except:
+            pass
+    else:
+        message = f"Chrome调试端口 {debug_port} 在 {max_wait} 秒内未就绪"
+        print(message)
+        if task_id:
+            log_publisher.publish_log(task_id, "error", message)
+        raise Exception("Chrome调试端口未就绪")
 
     driver = None
     dialog_thread = None
@@ -214,10 +256,27 @@ async def google_login_single(username: str, password: str, auth_url: str, headl
             if task_id:
                 log_publisher.publish_log(task_id, "info", message)
 
-        # 连接到Chrome
-        options = Options()
-        options.add_experimental_option("debuggerAddress", f"127.0.0.1:{debug_port}")
-        driver = webdriver.Chrome(options=options)
+        # 连接到Chrome，添加重试机制
+        max_retries = 3
+        for retry in range(max_retries):
+            try:
+                options = Options()
+                options.add_experimental_option("debuggerAddress", f"127.0.0.1:{debug_port}")
+                driver = webdriver.Chrome(options=options)
+                message = f"成功连接到Chrome (端口: {debug_port})"
+                print(message)
+                if task_id:
+                    log_publisher.publish_log(task_id, "info", message)
+                break
+            except Exception as e:
+                if retry < max_retries - 1:
+                    message = f"连接Chrome失败，重试 {retry + 1}/{max_retries}: {str(e)}"
+                    print(message)
+                    if task_id:
+                        log_publisher.publish_log(task_id, "warning", message)
+                    time.sleep(2)
+                else:
+                    raise
 
         message = f"Chrome浏览器已启动 (端口: {debug_port}, 位置: {window_x}, {window_y})"
         print(message)

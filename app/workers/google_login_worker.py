@@ -75,18 +75,27 @@ async def _run_google_login_task(task_id: int):
         log_publisher.publish_log(task_id, "info", f"任务状态已更新为运行中")
 
         # 并发执行多个登录任务，初始同时打开两个脚本任务
-        max_concurrent =1  # 最大并发数
+        max_concurrent =2  # 最大并发数
         running_tasks = []  # 当前运行的任务列表
         processed_count = 0
+        task_counter = 0  # 用于计算启动延迟
         
-        async def process_account(account):
+        async def process_account(account, task_index):
             """处理单个账号的登录任务"""
             try:
+                # 添加启动延迟，避免多个浏览器同时启动导致资源竞争
+                delay = task_index * 3  # 每个任务延迟3秒启动
+                if delay > 0:
+                    log_publisher.publish_log(task_id, "info", f"账号 {account['username']} 等待 {delay} 秒后启动...")
+                    await asyncio.sleep(delay)
+
+                log_publisher.publish_log(task_id, "info", f"开始处理账号: {account['username']}")
                 google_login_url = await get_auth_url(
                     auth_url=auth_url_obj.url,
                     description=auth_url_obj.description
                 )
                 log_publisher.publish_log(task_id, "info", f"账号 {account['username']} 获取到的授权地址: {google_login_url}")
+                log_publisher.publish_log(task_id, "info", f"正在为账号 {account['username']} 启动浏览器...")
                 
                 result = await google_login_single(
                     username=account["username"],
@@ -124,9 +133,10 @@ async def _run_google_login_task(task_id: int):
                 log_publisher.publish_log(task_id, "info", f"账号 {account['username']} 已从Redis中移除")
                 processed_count += 1
                 
-                # 创建并启动登录任务
-                task = asyncio.create_task(process_account(account))
+                # 创建并启动登录任务，传递task_index用于计算延迟
+                task = asyncio.create_task(process_account(account, task_counter))
                 running_tasks.append(task)
+                task_counter += 1
             
             # 如果还有运行中的任务且已达到最大并发数，等待一个任务完成
             if len(running_tasks) >= max_concurrent:
