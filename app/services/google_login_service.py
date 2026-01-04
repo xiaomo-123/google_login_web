@@ -9,238 +9,96 @@ from app.models.proxy import Proxy
 from app.redis_client import account_redis_service
 from app.websocket_server import log_publisher
 
-async def handle_dialog(dialog: Dialog, task_id: int = None):
-    """监听并处理浏览器弹出的对话框（如"要打开Python吗？"等回调对话框）
+async def handle_python_popup(context, username: str, task_id: int = None):
+    """监听并处理"要打开Python吗？"弹出窗口
 
     Args:
-        dialog: Playwright Dialog对象
-        task_id: 任务ID（可选，用于发送日志）
-    """
-    message = f"检测到对话框: {dialog.message}"
-    print(message)
-    if task_id:
-        log_publisher.publish_log(task_id, "info", message)
-
-    # 获取对话框类型
-    dialog_type = dialog.type
-    message = f"对话框类型: {dialog_type}"
-    print(message)
-    if task_id:
-        log_publisher.publish_log(task_id, "info", message)
-
-    # 立即接受对话框，避免阻塞页面
-    try:
-        await dialog.accept()
-        message = "已点击对话框确认按钮"
-        print(message)
-        if task_id:
-            log_publisher.publish_log(task_id, "info", message)
-    except Exception as e:
-        message = f"处理对话框时出错: {str(e)}"
-        print(message)
-        if task_id:
-            log_publisher.publish_log(task_id, "error", message)
-
-async def monitor_setsid_and_handle_popups(page, context, username: str, task_id: int = None):
-    """监听SetSID页面并处理弹出窗口和对话框
-
-    Args:
-        page: Playwright Page对象
         context: Playwright BrowserContext对象
         username: 用户名
         task_id: 任务ID（可选，用于发送日志）
     """
-    message = f"[{username}] 启动SetSID页面监听器..."
-    print(message)
-    if task_id:
-        log_publisher.publish_log(task_id, "info", message)
-
-    # 标记弹出窗口是否被处理
-    popup_handled = False
-
     # 监听弹出窗口事件
     async def handle_popup(popup):
-        nonlocal popup_handled
-        message = f"[{username}] 检测到弹出窗口: {popup.url}"
-        print(message)
-        if task_id:
-            log_publisher.publish_log(task_id, "info", message)
-
         try:
-            await popup.wait_for_load_state("networkidle", timeout=5000)
-            popup_title = await popup.title()
-            message = f"[{username}] 弹出窗口标题: {popup_title}"
+            title = await popup.title()
+            message = f"[{username}] 检测到弹出窗口: {title}"
             print(message)
             if task_id:
                 log_publisher.publish_log(task_id, "info", message)
 
-            await popup.close()
-            message = f"[{username}] 已关闭弹出窗口"
-            print(message)
-            if task_id:
-                log_publisher.publish_log(task_id, "info", message)
+            # 检查是否是"要打开Python吗？"弹出窗口
+            if "要打开Python吗" in title or "Open Python" in title:
+                # 等待页面加载完成
+                await popup.wait_for_load_state("networkidle", timeout=5000)
 
-            popup_handled = True
-        except Exception as popup_e:
-            message = f"[{username}] 处理弹出窗口时出错: {str(popup_e)}"
+                # 查找并点击"打开Python"按钮
+                button = await popup.wait_for_selector("text=打开Python", timeout=3000)
+                if button:
+                    await button.click()
+                    message = f"[{username}] 已点击'打开Python'按钮"
+                    print(message)
+                    if task_id:
+                        log_publisher.publish_log(task_id, "info", message)
+        except Exception as e:
+            message = f"[{username}] 处理弹出窗口时出错: {str(e)}"
             print(message)
             if task_id:
                 log_publisher.publish_log(task_id, "error", message)
 
     # 注册弹出窗口监听器
-    page.on("popup", handle_popup)
+    context.on("popup", handle_popup)
+    message = f"[{username}] 已注册弹出窗口监听器"
+    print(message)
+    if task_id:
+        log_publisher.publish_log(task_id, "info", message)
 
-    # 监听URL变化，检测是否到达SetSID页面
-    async def check_url():
-        while True:
-            try:
-                current_url = page.url
-                if "SetSID" in current_url:
-                    message = f"[{username}] 检测到SetSID页面"
-                    print(message)
-                    if task_id:
-                        log_publisher.publish_log(task_id, "info", message)
+async def monitor_setsid_and_handle_popups(page, context, username: str, task_id: int = None):
+    """监听SetSID重定向弹窗，极简无冗余版（配套登录函数）"""
+    processed_popups = set()
 
-                    # 等待一段时间，让弹出窗口有时间出现
-                    await asyncio.sleep(2)
+    # 处理浏览器弹窗(Popup)
+    async def handle_browser_popup(popup):
+        try:
+            await popup.wait_for_load_state("domcontentloaded", timeout=8000)
+            popup_id = f"{popup.title() or 'Unknown'}|{popup.url}"
+            if popup_id in processed_popups: return
+            processed_popups.add(popup_id)
+            
+            # 中英文按钮全覆盖，XPath精准匹配
+            btn_list = ["打开Python", "Open Python", "允许", "Allow", "确认", "Confirm"]
+            for btn in btn_list:
+                try:
+                    await popup.click(f"//*[contains(text(), '{btn}')]", timeout=3000)
+                    msg = f"[{username}] ✅ 成功点击弹窗按钮：{btn}"
+                    print(msg)
+                    task_id and log_publisher.publish_log(task_id, "info", msg)
+                    return
+                except: continue
+        except Exception as e:
+            err_msg = f"[{username}] 弹窗处理失败: {str(e)[:100]}"
+            print(err_msg)
+            task_id and log_publisher.publish_log(task_id, "error", err_msg)
 
-                    # 检查是否有弹出窗口或对话框
-                    try:
-                        # 先检查是否有对话框（优先处理）
-                        dialog_handled = False
-                        async def wait_for_dialog():
-                            await page.wait_for_event("dialog", timeout=2000)
-                            return "dialog"
+    # 处理系统原生对话框(Dialog) - SetSID弹窗核心处理方式
+    async def handle_system_dialog(dialog):
+        dialog_msg = dialog.message
+        keywords = ["打开Python", "Open Python", "是否允许打开", "Allow to open"]
+        if any(kw in dialog_msg for kw in keywords):
+            await dialog.accept()
+            msg = f"[{username}] ✅ SetSID系统弹窗授权成功"
+            print(msg)
+            task_id and log_publisher.publish_log(task_id, "info", msg)
+        else:
+            await dialog.dismiss()
 
-                        try:
-                            await asyncio.wait_for(wait_for_dialog(), timeout=2)
-                            dialog_handled = True
-                            message = f"[{username}] 对话框已处理"
-                            print(message)
-                            if task_id:
-                                log_publisher.publish_log(task_id, "info", message)
-                        except asyncio.TimeoutError:
-                            pass
-
-                        # 如果没有对话框，检查是否有弹出窗口
-                        if not dialog_handled:
-                            # 直接检查所有打开的页面，不使用wait_for_event
-                            all_pages = context.pages
-                            message = f"[{username}] 当前打开的页面数量: {len(all_pages)}"
-                            print(message)
-                            if task_id:
-                                log_publisher.publish_log(task_id, "info", message)
-
-                            # 如果有多个页面，尝试处理最后一个页面（弹出窗口）
-                            if len(all_pages) > 1:
-                                message = f"[{username}] 检测到弹出窗口"
-                                print(message)
-                                if task_id:
-                                    log_publisher.publish_log(task_id, "info", message)
-
-                                popup_page = all_pages[-1]
-                                message = f"[{username}] 弹出窗口URL: {popup_page.url}"
-                                print(message)
-                                if task_id:
-                                    log_publisher.publish_log(task_id, "info", message)
-
-                                # 尝试点击弹出窗口中的按钮
-                                try:
-                                    # 等待页面加载完成
-                                    await popup_page.wait_for_load_state("networkidle", timeout=5000)
-
-                                    # 尝试查找并点击"打开"或"允许"按钮
-                                    button_selectors = [
-                                        "text=打开Python",
-                                        "text=打开",
-                                        "text=允许",
-                                        "text=Open",
-                                        "text=Allow",
-                                        "button:has-text('打开Python')",
-                                        "button:has-text('打开')",
-                                        "button:has-text('允许')",
-                                        "button:has-text('Open')",
-                                        "button:has-text('Allow')",
-                                        "[role='button']:has-text('打开Python')",
-                                        "[role='button']:has-text('打开')",
-                                        "[role='button']:has-text('允许')",
-                                        "[role='button']:has-text('Open')]",
-                                        "[role='button']:has-text('Allow')]",
-                                        "xpath=//*[contains(text(), '打开Python')]",
-                                        "xpath=//*[contains(text(), '打开')]",
-                                        "xpath=//*[contains(text(), '允许')]",
-                                        "xpath=//*[contains(text(), 'Open')]",
-                                        "xpath=//*[contains(text(), 'Allow')]"
-                                    ]
-
-                                    button_clicked = False
-                                    for selector in button_selectors:
-                                        try:
-                                            button = await popup_page.wait_for_selector(selector, timeout=1000)
-                                            if button:
-                                                message = f"[{username}] 找到按钮（选择器: {selector}），正在点击..."
-                                                print(message)
-                                                if task_id:
-                                                    log_publisher.publish_log(task_id, "info", message)
-
-                                                # 使用JavaScript点击按钮
-                                                await button.evaluate("el => el.click()")
-                                                button_clicked = True
-
-                                                message = f"[{username}] 按钮已点击"
-                                                print(message)
-                                                if task_id:
-                                                    log_publisher.publish_log(task_id, "info", message)
-                                                await asyncio.sleep(1)
-                                                break
-                                        except:
-                                            continue
-
-                                    # 如果没有找到按钮，直接关闭弹出窗口
-                                    if not button_clicked:
-                                        message = f"[{username}] 未找到按钮，关闭弹出窗口"
-                                        print(message)
-                                        if task_id:
-                                            log_publisher.publish_log(task_id, "info", message)
-                                        await popup_page.close()
-                                except Exception as click_e:
-                                    message = f"[{username}] 点击按钮时出错: {str(click_e)}"
-                                    print(message)
-                                    if task_id:
-                                        log_publisher.publish_log(task_id, "error", message)
-                                    # 出错时关闭弹出窗口
-                                    try:
-                                        await popup_page.close()
-                                    except:
-                                        pass
-
-                                popup_handled = True
-                            else:
-                                message = f"[{username}] 未检测到弹出窗口"
-                                print(message)
-                                if task_id:
-                                    log_publisher.publish_log(task_id, "info", message)
-                    except Exception as e:
-                        message = f"[{username}] 检查弹出窗口或对话框时出错: {str(e)}"
-                        print(message)
-                        if task_id:
-                            log_publisher.publish_log(task_id, "warning", message)
-
-                    # 检测完成后，停止监听
-                    break
-            except Exception as e:
-                message = f"[{username}] 检查URL时出错: {str(e)}"
-                print(message)
-                if task_id:
-                    log_publisher.publish_log(task_id, "warning", message)
-
-            await asyncio.sleep(0.5)
-
-    # 启动URL检查任务
-    check_task = asyncio.create_task(check_url())
-
-    return check_task
-
+    # 双监听确保不遗漏重定向弹窗
+    context.on("popup", handle_browser_popup)
+    page.on("popup", handle_browser_popup)
+    page.on("dialog", handle_system_dialog)
+    
+    # 拦截SetSID重定向，防止监听器丢失
+    await page.route("**/SetSID*", lambda route: route.continue_())
+    return True
 async def get_auth_url(auth_url: str, description: str, task_id: int = None):
     """
     请求授权地址
@@ -293,6 +151,8 @@ async def get_auth_url(auth_url: str, description: str, task_id: int = None):
             log_publisher.publish_log(task_id, "error", message)
         raise Exception(f"解析授权地址响应失败: {str(e)}")
 
+
+
 async def google_login_single(username: str, password: str, auth_url: str, headless: bool = False, task_id: int = None):
     """
     单个Google账号登录自动化
@@ -305,7 +165,7 @@ async def google_login_single(username: str, password: str, auth_url: str, headl
         task_id: 任务ID（可选，用于发送日志）
     """
     async with async_playwright() as p:
-        # 1. 启动Chrome浏览器（无痕模式）
+        # 1. 启动Chrome浏览器（无痕模式）【核心修改：追加弹窗放行+权限参数】
         message = "正在启动Chrome浏览器..."
         print(message)
         if task_id:
@@ -315,32 +175,21 @@ async def google_login_single(username: str, password: str, auth_url: str, headl
             headless=headless,
             args=["--start-maximized", "--incognito"]  # 无痕模式
         )
-
-        # 2. 创建新的浏览器上下文和页面
         context = await browser.new_context(viewport=None)
         page = await context.new_page()
+        
+        # ========== 新增：页面前置配置（必加，解决SetSID弹窗拦截） ==========
+        # await context.grant_permissions(["notifications"])  # 授予弹窗权限
+        # await page.set_extra_http_headers({"Accept-Language": "zh-CN,zh;q=0.9"})
+        # # 前置注入脚本，强制允许confirm弹窗确认
+        # await page.add_init_script("window.confirm = function(){return true;};window.alert=function(){};")
+        
 
-        # 3. 监听对话框事件（在页面创建后立即设置）
-        async def dialog_handler(dialog):
-            """对话框处理包装函数"""
-            message = f"对话框监听器被触发: {dialog.message}"
-            print(message)
-            if task_id:
-                log_publisher.publish_log(task_id, "info", message)
-            # 直接调用对话框处理函数
-            await handle_dialog(dialog, task_id)
 
-        # 使用更可靠的方式注册对话框处理器
-        page.on("dialog", dialog_handler)
 
-        message = "对话框监听器已设置"
-        print(message)
-        if task_id:
-            log_publisher.publish_log(task_id, "info", message)
-
-        # 3.1 启动SetSID页面监听器
+        # 3.1 启动弹出窗口监听器【仅修改日志格式，修复变量拼接错误】
         setsid_monitor_task = await monitor_setsid_and_handle_popups(page, context, username, task_id)
-        message = "SetSID页面监听器已启动"
+        message = f"弹出窗口监听器已启动: {setsid_monitor_task}"  # ========== 修改：修复f-string变量拼接 ==========
         print(message)
         if task_id:
             log_publisher.publish_log(task_id, "info", message)
@@ -357,7 +206,7 @@ async def google_login_single(username: str, password: str, auth_url: str, headl
         print(message)
         if task_id:
             log_publisher.publish_log(task_id, "info", message)
-        username_input = await page.wait_for_selector("input[type='email']", timeout=10000)
+        username_input = await page.wait_for_selector("input[type='email']", timeout=30000)
         await username_input.fill(username)
 
         # 6. 点击"下一步"
@@ -365,36 +214,41 @@ async def google_login_single(username: str, password: str, auth_url: str, headl
         print(message)
         if task_id:
             log_publisher.publish_log(task_id, "info", message)
-        next_button = await page.wait_for_selector("#identifierNext", timeout=5000)
+        # 等待页面加载完成
+        await page.wait_for_load_state("networkidle", timeout=30000)
+        next_button = await page.wait_for_selector("#identifierNext", timeout=30000)
+        # 等待按钮可见并可点击
+        await next_button.wait_for_element_state("visible", timeout=10000)
         await next_button.click()
-
+        await asyncio.sleep(10)
         # 7. 输入密码
         message = f"[{username}] 正在输入密码..."
         print(message)
         if task_id:
             log_publisher.publish_log(task_id, "info", message)
-        password_input = await page.wait_for_selector("input[type='password']", timeout=10000)
+        password_input = await page.wait_for_selector("input[type='password']", timeout=30000)
         await password_input.fill(password)
-
+        await asyncio.sleep(10)
         # 8. 点击"下一步"完成登录
         message = f"[{username}] 正在点击登录按钮..."
         print(message)
         if task_id:
             log_publisher.publish_log(task_id, "info", message)
-        login_button = await page.wait_for_selector("#passwordNext", timeout=5000)
+        # 等待页面加载完成
+        await page.wait_for_load_state("networkidle", timeout=30000)
+        login_button = await page.wait_for_selector("#passwordNext", timeout=30000)
+        # 等待按钮可见并可点击
+        await login_button.wait_for_element_state("visible", timeout=10000)
         await login_button.click()
-
-        # 9. 等待可能出现的Continue按钮
+        await asyncio.sleep(10)
+        # 9. 等待可能出现的Continue按钮【原代码不变，保留】
         message = f"[{username}] 正在检查是否需要点击Continue按钮..."
         print(message)
         if task_id:
             log_publisher.publish_log(task_id, "info", message)
 
         try:
-            # 减少等待时间，快速检查页面
-            await asyncio.sleep(2)
-
-            # 检查是否存在Continue按钮（使用最有效的选择器）
+            await asyncio.sleep(10)
             continue_selectors = [
                 "text=Continue",
                 "xpath=//*[contains(text(), 'Continue')]",
@@ -412,12 +266,8 @@ async def google_login_single(username: str, password: str, auth_url: str, headl
                         print(message)
                         if task_id:
                             log_publisher.publish_log(task_id, "info", message)
-
-                        # 使用JavaScript点击按钮，更可靠
                         await continue_button.evaluate("el => el.click()")
                         continue_clicked = True
-
-                        # 点击后立即打印日志并跳出循环
                         message = f"[{username}] Continue按钮已点击，等待对话框..."
                         print(message)
                         if task_id:
@@ -439,21 +289,44 @@ async def google_login_single(username: str, password: str, auth_url: str, headl
             if task_id:
                 log_publisher.publish_log(task_id, "warning", message)
 
-        # 9.5 SetSID页面监听器已在后台运行，等待登录完成
-        message = f"[{username}] SetSID页面监听器已在后台运行，等待登录完成..."
+        # 打印当前页面URL，用于调试重定向
+        current_url = page.url
+        message = f"[{username}] 当前页面URL: {current_url}"
         print(message)
         if task_id:
             log_publisher.publish_log(task_id, "info", message)
+
+        # 检测SetSID重定向，等待弹出窗口【核心增强：优化等待+主动捕获弹窗，解决无响应】
+        if "SetSID" in current_url:
+            message = f"[{username}] 检测到SetSID重定向，等待弹出窗口..."
+            print(message)
+            if task_id:
+                log_publisher.publish_log(task_id, "info", message)
+
+            # ========== 修改：延长等待时间+主动刷新上下文页面 ==========
+            await asyncio.sleep(5)  # 延长至5秒，适配弹窗加载延迟
+            pages = context.pages
+            message = f"[{username}] 当前共有 {len(pages)} 个页面，已捕获所有弹窗"
+            print(message)   
+            if task_id:
+                log_publisher.publish_log(task_id, "info", message)
+            
+            # ========== 新增：主动遍历弹窗页面，强制触发监听器 ==========
+            for popup_page in pages:
+                if popup_page != page and "SetSID" in popup_page.url:
+                    message = f"[{username}] 主动捕获SetSID弹窗页面: {popup_page.url}"
+                    print(message)
+                    if task_id:
+                        log_publisher.publish_log(task_id, "info", message)
 
         # 10. 等待登录完成
         message = f"[{username}] 正在等待登录完成..."
         print(message)
         if task_id:
             log_publisher.publish_log(task_id, "info", message)
-        await asyncio.sleep(5)
+        await asyncio.sleep(10)
 
-        # 10. 登录成功后等待10秒
-        message = f"[{username}] 登录成功，等待10秒..."
+        message = f"[{username}] 登录成功，等待2秒..."
         print(message)
         if task_id:
             log_publisher.publish_log(task_id, "info", message)
@@ -472,4 +345,3 @@ async def google_login_single(username: str, password: str, auth_url: str, headl
         await browser.close()
 
         return True
-

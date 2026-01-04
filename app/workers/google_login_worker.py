@@ -60,22 +60,12 @@ async def _run_google_login_task(task_id: int):
         log_publisher.publish_log(task_id, "info", f"授权地址状态: {'正常' if auth_url_obj.status == 1 else '禁用'}")
 
         # 获取账号信息
-        accounts = account_redis_service.get_all_accounts(get_all=True)
-        if not accounts:
-            log_publisher.publish_log(task_id, "error", "没有可用的账号")
-            raise Exception("没有可用的账号")
-
-        account = accounts[0]
-        log_publisher.publish_log(task_id, "info", "正在获取账号信息...")
-        log_publisher.publish_log(task_id, "info", f"使用账号: {account['username']}")
+        # 不再一次性获取所有账号，而是逐个获取
+        log_publisher.publish_log(task_id, "info", "准备开始处理账号...")
 
         # 请求授权地址
         log_publisher.publish_log(task_id, "info", "正在请求授权地址...")
-        google_login_url = await get_auth_url(
-            auth_url=auth_url_obj.url,
-            description=auth_url_obj.description
-        )
-        log_publisher.publish_log(task_id, "info", f"获取到的授权地址: {google_login_url}")
+        
 
         # 更新任务状态为运行中
         task.status = "running"
@@ -83,37 +73,70 @@ async def _run_google_login_task(task_id: int):
         db.commit()
         log_publisher.publish_log(task_id, "info", f"任务状态已更新为运行中")
 
-        # 执行登录
-        try:
-            log_publisher.publish_log(task_id, "info", "开始执行Google登录操作...")
-            result = await google_login_single(
-                username=account["username"],
-                password=account["password"],
-                auth_url=google_login_url,
-                headless=False,
-                task_id=task_id
-            )
-
-            # 更新任务状态为完成
-            task.status = "completed"
-            task.result = "登录成功"
-            task.completed_at = datetime.now()
-            db.commit()
-            log_publisher.publish_log(task_id, "info", "登录成功！任务执行完成")
-
-        except asyncio.CancelledError:
-            log_publisher.publish_log(task_id, "warning", f"任务被取消")
-            task.status = "stopped"
-            task.completed_at = datetime.now()
-            db.commit()
-        except Exception as e:
-            # 更新任务状态为错误
-            log_publisher.publish_log(task_id, "error", f"执行任务失败: {str(e)}")
-            task.status = "error"
-            task.error_message = str(e)
-            task.completed_at = datetime.now()
-            db.commit()
-            raise e
+        # 并发执行多个登录任务，初始同时打开两个脚本任务
+        max_concurrent = 3  # 最大并发数
+        running_tasks = []  # 当前运行的任务列表
+        processed_count = 0
+        
+        async def process_account(account):
+            """处理单个账号的登录任务"""
+            try:
+                google_login_url = await get_auth_url(
+                    auth_url=auth_url_obj.url,
+                    description=auth_url_obj.description
+                )
+                log_publisher.publish_log(task_id, "info", f"账号 {account['username']} 获取到的授权地址: {google_login_url}")
+                
+                result = await google_login_single(
+                    username=account["username"],
+                    password=account["password"],
+                    auth_url=google_login_url,
+                    headless=False,
+                    task_id=task_id
+                )
+                log_publisher.publish_log(task_id, "info", f"账号 {account['username']} 登录成功")
+                return True
+            except asyncio.CancelledError:
+                log_publisher.publish_log(task_id, "warning", f"账号 {account['username']} 任务被取消")
+                raise
+            except Exception as e:
+                log_publisher.publish_log(task_id, "error", f"账号 {account['username']} 登录失败: {str(e)}")
+                return False
+        
+        while True:
+            # 清理已完成的任务
+            running_tasks = [task for task in running_tasks if not task.done()]
+            
+            # 直接获取多个账号进行并发处理
+            accounts = account_redis_service.get_all_accounts(skip=processed_count, limit=max_concurrent - len(running_tasks))
+            if not accounts:
+                # 没有新账号，等待所有运行中的任务完成
+                if running_tasks:
+                    await asyncio.wait(running_tasks)
+                log_publisher.publish_log(task_id, "info", "所有账号已处理完成")
+                break
+            
+            # 为每个账号创建并启动登录任务
+            for account in accounts:
+                # 获取账号后立即从Redis中删除
+                account_redis_service.delete_account(account["id"])
+                log_publisher.publish_log(task_id, "info", f"账号 {account['username']} 已从Redis中移除")
+                processed_count += 1
+                
+                # 创建并启动登录任务
+                task = asyncio.create_task(process_account(account))
+                running_tasks.append(task)
+            
+            # 如果还有运行中的任务且已达到最大并发数，等待一个任务完成
+            if len(running_tasks) >= max_concurrent:
+                done, _ = await asyncio.wait(running_tasks, return_when=asyncio.FIRST_COMPLETED)
+        
+        # 更新任务状态为完成
+        task.status = "completed"
+        task.result = "所有账号处理完成"
+        task.completed_at = datetime.now()
+        db.commit()
+        log_publisher.publish_log(task_id, "info", "所有账号处理完成！任务执行完成")
 
     except Exception as e:
         log_publisher.publish_log(task_id, "error", f"Google登录任务异常: {str(e)}")
