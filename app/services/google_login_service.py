@@ -7,27 +7,40 @@ from app.models.task import Task
 from app.models.auth_url import AuthUrl
 from app.models.proxy import Proxy
 from app.redis_client import account_redis_service
+from app.websocket_server import log_publisher
 
-async def handle_dialog(dialog: Dialog):
+async def handle_dialog(dialog: Dialog, task_id: int = None):
     """监听并处理浏览器弹出的对话框（比如"要打开Python吗？"）"""
-    print(f"检测到弹窗：{dialog.message}")
+    message = f"检测到弹窗：{dialog.message}"
+    print(message)
+    if task_id:
+        log_publisher.publish_log(task_id, "info", message)
     # 点击"打开Python"按钮（对应dialog.accept()）
     # 若要点击"取消"，则替换为 dialog.dismiss()
     await dialog.accept()
-    print("已点击「打开Python」")
+    message = "已点击「打开Python」"
+    print(message)
+    if task_id:
+        log_publisher.publish_log(task_id, "info", message)
 
-async def get_auth_url(auth_url: str, description: str):
+async def get_auth_url(auth_url: str, description: str, task_id: int = None):
     """
     请求授权地址
 
     参数:
         auth_url: 授权地址
         description: 描述参数
+        task_id: 任务ID（可选，用于发送日志）
 
     返回:
         auth_url: 授权URL
     """
     try:
+        message = f"正在请求授权地址: {auth_url}"
+        print(message)
+        if task_id:
+            log_publisher.publish_log(task_id, "info", message)
+
         async with aiohttp.ClientSession() as session:
             # 发送POST请求
             async with session.post(
@@ -41,17 +54,28 @@ async def get_auth_url(auth_url: str, description: str):
                 # 解析响应
                 result = await response.json()
 
+                message = f"成功获取授权地址: {result.get('auth_url')}"
+                print(message)
+                if task_id:
+                    log_publisher.publish_log(task_id, "info", message)
+
                 # 返回auth_url
                 return result.get("auth_url")
 
     except aiohttp.ClientError as e:
-        print(f"请求授权地址失败: {str(e)}")
+        message = f"请求授权地址失败: {str(e)}"
+        print(message)
+        if task_id:
+            log_publisher.publish_log(task_id, "error", message)
         raise Exception(f"请求授权地址失败: {str(e)}")
     except Exception as e:
-        print(f"解析授权地址响应失败: {str(e)}")
+        message = f"解析授权地址响应失败: {str(e)}"
+        print(message)
+        if task_id:
+            log_publisher.publish_log(task_id, "error", message)
         raise Exception(f"解析授权地址响应失败: {str(e)}")
 
-async def google_login_single(username: str, password: str, auth_url: str, headless: bool = False):
+async def google_login_single(username: str, password: str, auth_url: str, headless: bool = False, task_id: int = None):
     """
     单个Google账号登录自动化
 
@@ -60,9 +84,15 @@ async def google_login_single(username: str, password: str, auth_url: str, headl
         password: Google账号密码
         auth_url: 授权地址
         headless: 是否使用无头模式（默认False显示浏览器）
+        task_id: 任务ID（可选，用于发送日志）
     """
     async with async_playwright() as p:
         # 1. 启动Chrome浏览器（无痕模式）
+        message = "正在启动Chrome浏览器..."
+        print(message)
+        if task_id:
+            log_publisher.publish_log(task_id, "info", message)
+
         browser = await p.chromium.launch(
             headless=headless,
             args=["--start-maximized", "--incognito"]  # 无痕模式
@@ -73,43 +103,71 @@ async def google_login_single(username: str, password: str, auth_url: str, headl
         page = await context.new_page()
 
         # 3. 监听对话框事件
-        page.on("dialog", handle_dialog)
+        page.on("dialog", lambda dialog: handle_dialog(dialog, task_id))
 
         # 4. 访问授权地址
-        print(f"访问授权地址: {auth_url}")
+        message = f"正在访问授权地址: {auth_url}"
+        print(message)
+        if task_id:
+            log_publisher.publish_log(task_id, "info", message)
         await page.goto(auth_url, timeout=30000)
 
         # 5. 输入用户名
-        print(f"[{username}] 正在输入用户名...")
+        message = f"[{username}] 正在输入用户名..."
+        print(message)
+        if task_id:
+            log_publisher.publish_log(task_id, "info", message)
         username_input = await page.wait_for_selector("input[type='email']", timeout=10000)
         await username_input.fill(username)
 
         # 6. 点击"下一步"
-        print(f"[{username}] 点击下一步...")
+        message = f"[{username}] 正在点击下一步..."
+        print(message)
+        if task_id:
+            log_publisher.publish_log(task_id, "info", message)
         next_button = await page.wait_for_selector("#identifierNext", timeout=5000)
         await next_button.click()
 
         # 7. 输入密码
-        print(f"[{username}] 正在输入密码...")
+        message = f"[{username}] 正在输入密码..."
+        print(message)
+        if task_id:
+            log_publisher.publish_log(task_id, "info", message)
         password_input = await page.wait_for_selector("input[type='password']", timeout=10000)
         await password_input.fill(password)
 
         # 8. 点击"下一步"完成登录
-        print(f"[{username}] 点击登录...")
+        message = f"[{username}] 正在点击登录按钮..."
+        print(message)
+        if task_id:
+            log_publisher.publish_log(task_id, "info", message)
         login_button = await page.wait_for_selector("#passwordNext", timeout=5000)
         await login_button.click()
 
         # 9. 等待登录完成
-        print(f"[{username}] 等待登录完成...")
+        message = f"[{username}] 正在等待登录完成..."
+        print(message)
+        if task_id:
+            log_publisher.publish_log(task_id, "info", message)
         await asyncio.sleep(5)
 
         # 10. 登录成功后等待10秒
-        print(f"[{username}] 登录成功，等待10秒...")
+        message = f"[{username}] 登录成功，等待10秒..."
+        print(message)
+        if task_id:
+            log_publisher.publish_log(task_id, "info", message)
         await asyncio.sleep(10)
 
-        print(f"[{username}] 登录流程已完成！")
+        message = f"[{username}] 登录流程已完成！"
+        print(message)
+        if task_id:
+            log_publisher.publish_log(task_id, "info", message)
 
         # 11. 关闭浏览器
+        message = "正在关闭浏览器..."
+        print(message)
+        if task_id:
+            log_publisher.publish_log(task_id, "info", message)
         await browser.close()
 
         return True
@@ -126,8 +184,10 @@ async def run_google_login_task(task_id: int):
         # 获取任务信息
         task = db.query(Task).filter(Task.id == task_id).first()
         if not task:
-            print(f"任务ID {task_id} 不存在")
+            log_publisher.publish_log(task_id, "error", f"任务ID {task_id} 不存在")
             return
+
+        log_publisher.publish_log(task_id, "info", f"开始执行任务: {task.name}")
 
         # 获取并打印代理信息
         proxy_info = None
@@ -135,72 +195,64 @@ async def run_google_login_task(task_id: int):
             proxy = db.query(Proxy).filter(Proxy.id == task.proxy_id and proxy.status == 1).first()
             if proxy:
                 proxy_info = f"{proxy.proxy_type}://{proxy.username}:{proxy.password}@{proxy.url}:{proxy.port}" if proxy.username else f"{proxy.proxy_type}://{proxy.url}:{proxy.port}"
-                print(f"\n代理信息:")
-                print(f"  ID: {proxy.id}")
-                print(f"  地址: {proxy_info}")
-                print(f"  类型: {proxy.proxy_type}")
-                print(f"  状态: {'正常' if proxy.status == 1 else '禁用'}")
+                log_publisher.publish_log(task_id, "info", f"使用代理: {proxy_info}")
+                log_publisher.publish_log(task_id, "info", f"代理类型: {proxy.proxy_type}")
+                log_publisher.publish_log(task_id, "info", f"代理状态: {'正常' if proxy.status == 1 else '禁用'}")
             else:
-                print(f"\n代理ID {task.proxy_id} 不存在")
+                log_publisher.publish_log(task_id, "warning", f"代理ID {task.proxy_id} 不存在")
         else:
-            print(f"\n未配置代理")
+            log_publisher.publish_log(task_id, "info", "未配置代理")
 
         # 获取账号信息（从Redis）
-        print(f"\n账号信息:")
-        print(f"  爬虫类型: {task.account_type}")
+        log_publisher.publish_log(task_id, "info", f"爬虫类型: {task.account_type}")
 
         # 获取所有账号
         accounts = account_redis_service.get_all_accounts(get_all=True)
         total_count = len(accounts)
 
-        print(f"  账号总数: {total_count}")
-
-        # 逐条打印账号信息
-        # print(f"\n账号列表:")
-        # for idx, account in enumerate(all_accounts, 1):
-        #     print(f"  [{idx}] ID: {account['id']}, 用户名: {account['username']}, 密码: {account['password']}, 状态: {'正常' if account['status'] == 1 else '禁用'}")
-
+        log_publisher.publish_log(task_id, "info", f"可用账号总数: {total_count}")
 
         # 获取授权地址
         auth_url_obj = db.query(AuthUrl).filter(AuthUrl.id == task.auth_url_id).first()
         if not auth_url_obj:
+            log_publisher.publish_log(task_id, "error", f"授权地址ID {task.auth_url_id} 不存在")
             raise Exception(f"授权地址ID {task.auth_url_id} 不存在")
 
-        print(f"\n授权地址:")
-        print(f"  ID: {auth_url_obj.id}")
-        print(f"  名称: {auth_url_obj.name}")
-        print(f"  URL: {auth_url_obj.url}")
-        print(f"  描述: {auth_url_obj.description}")
-        print(f"  状态: {'正常' if auth_url_obj.status == 1 else '禁用'}")
+        log_publisher.publish_log(task_id, "info", f"授权地址名称: {auth_url_obj.name}")
+        log_publisher.publish_log(task_id, "info", f"授权地址URL: {auth_url_obj.url}")
+        log_publisher.publish_log(task_id, "info", f"授权地址状态: {'正常' if auth_url_obj.status == 1 else '禁用'}")
+
         account = accounts[0]
 
         # 执行登录
         try:
             if task.account_type == 1:
                 # 请求授权地址
-                print(f"\n正在请求授权地址...")
                 google_login_url = await get_auth_url(
                     auth_url=auth_url_obj.url,
-                    description=auth_url_obj.description
+                    description=auth_url_obj.description,
+                    task_id=task_id
                 )
-                print(f"获取到的授权地址: {google_login_url}")
 
             # 调用登录函数
-            #     result = await google_login_single(
-            #     username=account["username"],
-            #     password=account["password"],
-            #     auth_url=google_login_url,
-            #     headless=False  # 可以从配置中读取
-            # )
+            result = await google_login_single(
+                username=account["username"],
+                password=account["password"],
+                auth_url=google_login_url,
+                headless=False,
+                task_id=task_id
+            )
 
-                # 更新任务状态为完成
-                task.status = "completed"
-                task.result = "登录成功"
-                task.completed_at = datetime.now()
-                db.commit()
+            # 更新任务状态为完成
+            task.status = "completed"
+            task.result = "登录成功"
+            task.completed_at = datetime.now()
+            db.commit()
+            log_publisher.publish_log(task_id, "info", "任务执行完成！")
 
         except Exception as e:
             # 更新任务状态为错误
+            log_publisher.publish_log(task_id, "error", f"执行任务失败: {str(e)}")
             task.status = "error"
             task.error_message = str(e)
             task.completed_at = datetime.now()
@@ -208,7 +260,7 @@ async def run_google_login_task(task_id: int):
             raise e
 
     except Exception as e:
-        print(f"执行任务失败: {str(e)}")
+        log_publisher.publish_log(task_id, "error", f"任务执行异常: {str(e)}")
         # 如果任务存在，更新状态
         if 'task' in locals():
             task.status = "error"

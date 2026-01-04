@@ -86,12 +86,13 @@ async def _run_google_login_task(task_id: int):
         # 执行登录
         try:
             log_publisher.publish_log(task_id, "info", "开始执行Google登录操作...")
-            # result = await google_login_single(
-            #     username=account["username"],
-            #     password=account["password"],
-            #     auth_url=google_login_url,
-            #     headless=False
-            # )
+            result = await google_login_single(
+                username=account["username"],
+                password=account["password"],
+                auth_url=google_login_url,
+                headless=False,
+                task_id=task_id
+            )
 
             # 更新任务状态为完成
             task.status = "completed"
