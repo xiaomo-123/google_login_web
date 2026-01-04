@@ -5,28 +5,15 @@ import json
 from datetime import datetime
 
 # 创建Redis连接池
-try:
-    print(f"尝试连接Redis: {settings.REDIS_HOST}:{settings.REDIS_PORT}")
-    redis_pool = redis.ConnectionPool(
-        host=settings.REDIS_HOST,
-        port=settings.REDIS_PORT,
-        db=settings.REDIS_DB,
-        password=settings.REDIS_PASSWORD,
-        decode_responses=settings.REDIS_DECODE_RESPONSES,
-        socket_connect_timeout=5,
-        socket_timeout=5
-    )
-    # 测试连接
-    test_redis = redis.Redis(connection_pool=redis_pool)
-    result = test_redis.ping()
-    print(f"Redis连接成功，ping结果: {result}")
-except Exception as e:
-    print(f"Redis连接失败: {str(e)}")
-    print(f"请检查:")
-    print(f"1. Redis服务是否启动 (redis-server)")
-    print(f"2. Redis端口是否正确 (当前配置: {settings.REDIS_HOST}:{settings.REDIS_PORT})")
-    print(f"3. 如果使用Docker，确保Redis容器正在运行")
-    raise Exception(f"无法连接到Redis服务器，请确保Redis服务正在运行。错误: {str(e)}")
+redis_pool = redis.ConnectionPool(
+    host=settings.REDIS_HOST,
+    port=settings.REDIS_PORT,
+    db=settings.REDIS_DB,
+    password=settings.REDIS_PASSWORD,
+    decode_responses=settings.REDIS_DECODE_RESPONSES,
+    socket_connect_timeout=5,
+    socket_timeout=5
+)
 
 # 获取Redis客户端
 def get_redis():

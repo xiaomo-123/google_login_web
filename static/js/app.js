@@ -199,10 +199,16 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.nav-links a').forEach(link => {
         link.addEventListener('click', (e) => {
             e.preventDefault();
-            showSection(link.getAttribute('data-section'));
+            const sectionId = link.getAttribute('data-section');
+            showSection(sectionId);
+            // 保存当前页面到localStorage
+            localStorage.setItem('currentSection', sectionId);
         });
     });
-    showSection('accounts');
+
+    // 从localStorage恢复上次访问的页面
+    const savedSection = localStorage.getItem('currentSection') || 'accounts';
+    showSection(savedSection);
 });
 
 function showSection(sectionId) {

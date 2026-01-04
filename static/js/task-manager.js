@@ -3,7 +3,7 @@ const TaskManager = {
     load() {
         TaskAPI.list()
             .then(tasks => this.render(tasks))
-            .catch(error => UI.showAlert('加载失败: ' + error.message, 'error'));
+            .catch(error => UI.showAlert('加载失败', 'error'));
     },
 
     render(tasks) {
@@ -121,7 +121,7 @@ const TaskManager = {
         UI.showModal('addTaskModal');
         } catch (error) {
             console.error('加载任务信息失败:', error);
-            UI.showAlert('加载任务信息失败: ' + error.message, 'error');
+            UI.showAlert('加载失败', 'error');
         }
     },
 
@@ -130,7 +130,7 @@ const TaskManager = {
 
         // 防止重复提交
         if (this.isSubmitting) {
-            UI.showAlert('正在提交中，请稍候...', 'error');
+            UI.showAlert('正在提交中', 'error');
             return;
         }
         this.isSubmitting = true;
@@ -155,7 +155,7 @@ const TaskManager = {
 
         // 验证
         if (!taskData.name || !taskData.auth_url_id) {
-            UI.showAlert('请填写任务名称和授权地址', 'error');
+            UI.showAlert('请填写完整信息', 'error');
             this.isSubmitting = false;
             return;
         }
@@ -164,18 +164,18 @@ const TaskManager = {
             if (taskId) {
                 // 更新任务
                 await TaskAPI.update(parseInt(taskId), taskData);
-                UI.showAlert('任务更新成功', 'success');
+                UI.showAlert('更新成功', 'success');
             } else {
                 // 创建任务
                 await TaskAPI.create(taskData);
-                UI.showAlert('任务创建成功', 'success');
+                UI.showAlert('创建成功', 'success');
             }
 
             UI.hideModal('addTaskModal');
             this.load();
         } catch (error) {
             console.error('保存任务失败:', error);
-            UI.showAlert('保存任务失败: ' + error.message, 'error');
+            UI.showAlert('保存失败', 'error');
         } finally {
             this.isSubmitting = false;
         }
@@ -184,11 +184,11 @@ const TaskManager = {
     async start(taskId) {
         try {
             await TaskAPI.start(taskId);
-            UI.showAlert('任务已启动', 'success');
+            UI.showAlert('启动成功', 'success');
             this.load();
         } catch (error) {
             console.error('启动任务失败:', error);
-            UI.showAlert('启动任务失败: ' + error.message, 'error');
+            UI.showAlert('启动失败', 'error');
         }
     },
 
@@ -199,11 +199,11 @@ const TaskManager = {
 
         try {
             await TaskAPI.stop(taskId);
-            UI.showAlert('任务已停止', 'success');
+            UI.showAlert('已停止', 'success');
             this.load();
         } catch (error) {
             console.error('停止任务失败:', error);
-            UI.showAlert('停止任务失败: ' + error.message, 'error');
+            UI.showAlert('停止失败', 'error');
         }
     },
 
@@ -218,11 +218,11 @@ const TaskManager = {
 
         try {
             await TaskAPI.delete(taskId);
-            UI.showAlert('任务删除成功', 'success');
+            UI.showAlert('删除成功', 'success');
             this.load();
         } catch (error) {
             console.error('删除任务失败:', error);
-            UI.showAlert('删除任务失败: ' + error.message, 'error');
+            UI.showAlert('删除失败', 'error');
         }
     },
 

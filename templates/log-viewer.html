@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>任务日志查看器</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/log-viewer.css">
+</head>
+<body>
+    <div class="container">
+        <div class="navbar">
+            <div class="container">
+                <h1>任务日志查看器</h1>
+                <div class="nav-links">
+                    <a href="/">返回首页</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>日志控制</h2>
+            <div class="form-group">
+                <label for="taskId">任务ID</label>
+                <input type="number" id="taskId" placeholder="请输入任务ID" min="1">
+            </div>
+            <div class="form-group">
+                <button class="btn btn-primary" onclick="startLogViewer()">开始查看日志</button>
+                <button class="btn btn-success" onclick="simulateLogs()">模拟日志</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>实时日志</h2>
+            <div id="logContainer" class="log-container">
+                <div class="log-content" style="color: #858585; padding: 20px; text-align: center;">
+                    请输入任务ID并点击"开始查看日志"按钮
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/log-viewer.js"></script>
+    <script>
+        let currentTaskId = null;
+
+        function startLogViewer() {
+            const taskIdInput = document.getElementById('taskId');
+            const taskId = parseInt(taskIdInput.value);
+
+            if (!taskId || taskId < 1) {
+                alert('请输入有效的任务ID');
+                return;
+            }
+
+            // 如果已有连接，先断开
+            if (currentTaskId && LogViewer.ws) {
+                LogViewer.disconnect();
+            }
+
+            // 更新当前任务ID
+            currentTaskId = taskId;
+
+            // 初始化日志查看器
+            const container = document.getElementById('logContainer');
+            LogViewer.init(taskId, container);
+        }
+
+        async function simulateLogs() {
+            const taskIdInput = document.getElementById('taskId');
+            const taskId = parseInt(taskIdInput.value);
+
+            if (!taskId || taskId < 1) {
+                alert('请输入有效的任务ID');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/logs/simulate?task_id=${taskId}&count=20`);
+                const result = await response.json();
+
+                if (result.success) {
+                    alert(result.message);
+                } else {
+                    alert('模拟日志失败: ' + result.message);
+                }
+            } catch (error) {
+                alert('模拟日志失败: ' + error.message);
+            }
+        }
+    </script>
+</body>
+</html>

@@ -13,9 +13,9 @@
             <h1>Google登录管理系统</h1>
             <div class="nav-links">
                 <a href="#" data-section="accounts">账号管理</a>
+                <a href="#" data-section="tasks">任务管理</a>
                 <a href="#" data-section="auth-urls">授权地址</a>
                 <a href="#" data-section="proxies">代理管理</a>
-                <a href="#" data-section="tasks">任务管理</a>
             </div>
         </div>
     </nav>
@@ -120,6 +120,25 @@
                     </thead>
                     <tbody></tbody>
                 </table>
+            </div>
+
+            <!-- 日志查看区域 -->
+            <div class="card" style="margin-top: 20px;">
+                <h2>实时日志</h2>
+                <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
+                    <label for="taskLogSelect" style="margin: 0;">选择任务:</label>
+                    <select id="taskLogSelect" onchange="TaskLogViewer.switchTask(this.value)" style="width: 200px;">
+                        <option value="">请选择任务</option>
+                    </select>
+                    <button class="btn btn-success btn-sm" onclick="TaskLogViewer.simulateLogs()">模拟日志</button>
+                    <button class="btn btn-secondary btn-sm" onclick="TaskLogViewer.clearLogs()">清空日志</button>
+                    <button class="btn btn-secondary btn-sm" onclick="TaskLogViewer.exportLogs()">导出日志</button>
+                </div>
+                <div id="logContainer" class="log-container">
+                    <div class="log-content" style="color: #858585; padding: 20px; text-align: center;">
+                        请选择任务以查看实时日志
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -294,6 +313,7 @@
     <script src="/static/js/auth-url-manager.js"></script>
     <script src="/static/js/proxy-manager.js"></script>
     <script src="/static/js/task-manager.js"></script>
+    <script src="/static/js/task-log-viewer.js"></script>
 
     <script>
         // 加载任务列表
